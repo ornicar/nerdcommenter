@@ -740,123 +740,6 @@ function s:CommentLinesMinimal(firstLine, lastLine)
     call setline(a:lastLine, theLine)
 endfunction
 
-" Function: s:CommentLinesSexy(topline, bottomline) function {{{2
-" This function is used to comment lines in the 'Sexy' style. eg in c:
-" /*
-"  * This is a sexy comment
-"  */
-" Args:
-"   -topline: the line num of the top line in the sexy comment
-"   -bottomline: the line num of the bottom line in the sexy comment
-function s:CommentLinesSexy(topline, bottomline)
-    let left = s:GetSexyComLeft(0, 0)
-    let right = s:GetSexyComRight(0, 0)
-
-    "check if we can do a sexy comment with the available delimiters
-    if left == -1 || right == -1
-        throw 'NERDCommenter.Delimiters exception: cannot perform sexy comments with available delimiters.'
-    endif
-
-    "make sure the lines arent already commented sexually
-    if !s:CanSexyCommentLines(a:topline, a:bottomline)
-        throw 'NERDCommenter.Nesting exception: cannot nest sexy comments'
-    endif
-
-
-    let sexyComMarker = s:GetSexyComMarker(0,0)
-    let sexyComMarkerSpaced = s:GetSexyComMarker(1,0)
-
-
-    " we jam the comment as far to the right as possible
-    let leftAlignIndx = s:LeftMostIndx(1, 1, a:topline, a:bottomline)
-
-    "check if we should use the compact style i.e that the left/right
-    "delimiters should appear on the first and last lines of the code and not
-    "on separate lines above/below the first/last lines of code
-    if g:NERDCompactSexyComs
-        let spaceString = (g:NERDSpaceDelims ? s:spaceStr : '')
-
-        "comment the top line
-        let theLine = getline(a:topline)
-        let lineHasTabs = s:HasLeadingTabs(theLine)
-        if lineHasTabs
-            let theLine = s:ConvertLeadingTabsToSpaces(theLine)
-        endif
-        let theLine = s:SwapOutterMultiPartDelimsForPlaceHolders(theLine)
-        let theLine = s:AddLeftDelimAligned(left . spaceString, theLine, leftAlignIndx)
-        if lineHasTabs
-            let theLine = s:ConvertLeadingSpacesToTabs(theLine)
-        endif
-        call setline(a:topline, theLine)
-
-        "comment the bottom line
-        if a:bottomline != a:topline
-            let theLine = getline(a:bottomline)
-            let lineHasTabs = s:HasLeadingTabs(theLine)
-            if lineHasTabs
-                let theLine = s:ConvertLeadingTabsToSpaces(theLine)
-            endif
-            let theLine = s:SwapOutterMultiPartDelimsForPlaceHolders(theLine)
-        endif
-        let theLine = s:AddRightDelim(spaceString . right, theLine)
-        if lineHasTabs
-            let theLine = s:ConvertLeadingSpacesToTabs(theLine)
-        endif
-        call setline(a:bottomline, theLine)
-    else
-
-        " add the left delimiter one line above the lines that are to be commented
-        call cursor(a:topline, 1)
-        execute 'normal! O'
-        let theLine = repeat(' ', leftAlignIndx) . left
-
-        " Make sure tabs are respected
-        if !&expandtab
-           let theLine = s:ConvertLeadingSpacesToTabs(theLine)
-        endif
-        call setline(a:topline, theLine)
-
-        " add the right delimiter after bottom line (we have to add 1 cos we moved
-        " the lines down when we added the left delim
-        call cursor(a:bottomline+1, 1)
-        execute 'normal! o'
-        let theLine = repeat(' ', leftAlignIndx) . repeat(' ', strlen(left)-strlen(sexyComMarker)) . right
-
-        " Make sure tabs are respected
-        if !&expandtab
-           let theLine = s:ConvertLeadingSpacesToTabs(theLine)
-        endif
-        call setline(a:bottomline+2, theLine)
-
-    endif
-
-    " go thru each line adding the sexyComMarker marker to the start of each
-    " line in the appropriate place to align them with the comment delims
-    let currentLine = a:topline+1
-    while currentLine <= a:bottomline + !g:NERDCompactSexyComs
-        " get the line and convert the tabs to spaces
-        let theLine = getline(currentLine)
-        let lineHasTabs = s:HasLeadingTabs(theLine)
-        if lineHasTabs
-            let theLine = s:ConvertLeadingTabsToSpaces(theLine)
-        endif
-
-        let theLine = s:SwapOutterMultiPartDelimsForPlaceHolders(theLine)
-
-        " add the sexyComMarker
-        let theLine = repeat(' ', leftAlignIndx) . repeat(' ', strlen(left)-strlen(sexyComMarker)) . sexyComMarkerSpaced . strpart(theLine, leftAlignIndx)
-
-        if lineHasTabs
-            let theLine = s:ConvertLeadingSpacesToTabs(theLine)
-        endif
-
-
-        " set the line and move onto the next one
-        call setline(currentLine, theLine)
-        let currentLine = currentLine + 1
-    endwhile
-
-endfunction
 
 " Function: s:CommentLinesToggle(forceNested, firstLine, lastLine) {{{2
 " Applies "toggle" commenting to the given range of lines
@@ -1019,37 +902,7 @@ function! NERDComment(isVisual, type) range
 
     let forceNested = (a:type == 'nested' || g:NERDDefaultNesting)
 
-    if a:type == 'norm' || a:type == 'nested'
-        if a:isVisual && visualmode() == ""
-            call s:CommentBlock(firstLine, lastLine, firstCol, lastCol, forceNested)
-        elseif a:isVisual && visualmode() == "v" && (g:NERDCommentWholeLinesInVMode==0 || (g:NERDCommentWholeLinesInVMode==2 && s:HasMultipartDelims()))
-            call s:CommentRegion(firstLine, firstCol, lastLine, lastCol, forceNested)
-        else
-            call s:CommentLines(forceNested, "none", firstLine, lastLine)
-        endif
-
-    elseif a:type == 'alignLeft' || a:type == 'alignBoth'
-        let align = "none"
-        if a:type == "alignLeft"
-            let align = "left"
-        elseif a:type == "alignBoth"
-            let align = "both"
-        endif
-        call s:CommentLines(forceNested, align, firstLine, lastLine)
-
-    elseif a:type == 'invert'
-        call s:InvertComment(firstLine, lastLine)
-
-    elseif a:type == 'sexy'
-        try
-            call s:CommentLinesSexy(firstLine, lastLine)
-        catch /NERDCommenter.Delimiters/
-            call s:CommentLines(forceNested, "none", firstLine, lastLine)
-        catch /NERDCommenter.Nesting/
-            call s:NerdEcho("Sexy comment aborted. Nested sexy cannot be nested", 0)
-        endtry
-
-    elseif a:type == 'toggle'
+    if a:type == 'toggle'
         let theLine = getline(firstLine)
 
         if s:IsInSexyComment(firstLine) || s:IsCommentedFromStartOfLine(s:Left(), theLine) || s:IsCommentedFromStartOfLine(s:Left({'alt': 1}), theLine)
@@ -1057,39 +910,6 @@ function! NERDComment(isVisual, type) range
         else
             call s:CommentLinesToggle(forceNested, firstLine, lastLine)
         endif
-
-    elseif a:type == 'minimal'
-        try
-            call s:CommentLinesMinimal(firstLine, lastLine)
-        catch /NERDCommenter.Delimiters/
-            call s:NerdEcho("Minimal comments can only be used for filetypes that have multipart delimiters.", 0)
-        catch /NERDCommenter.Settings/
-            call s:NerdEcho("Place holders are required but disabled.", 0)
-        endtry
-
-    elseif a:type == 'toEOL'
-        call s:SaveScreenState()
-        call s:CommentBlock(firstLine, firstLine, col("."), col("$")-1, 1)
-        call s:RestoreScreenState()
-
-    elseif a:type == 'append'
-        call s:AppendCommentToLine()
-
-    elseif a:type == 'insert'
-        call s:PlaceDelimitersAndInsBetween()
-
-    elseif a:type == 'uncomment'
-        call s:UncommentLines(firstLine, lastLine)
-
-    elseif a:type == 'yank'
-        if a:isVisual
-            normal! gvy
-        elseif countWasGiven
-            execute firstLine .','. lastLine .'yank'
-        else
-            normal! yy
-        endif
-        execute firstLine .','. lastLine .'call NERDComment('. a:isVisual .', "norm")'
     endif
 
     let &ignorecase = oldIgnoreCase
@@ -1557,19 +1377,6 @@ function s:CanPlaceCursor(line, col)
     return success
 endfunction
 
-" Function: s:CanSexyCommentLines(topline, bottomline) {{{2
-" Return: 1 if the given lines can be commented sexually, 0 otherwise
-function s:CanSexyCommentLines(topline, bottomline)
-    " see if the selected regions have any sexy comments
-    let currentLine = a:topline
-    while(currentLine <= a:bottomline)
-        if s:IsInSexyComment(currentLine)
-            return 0
-        endif
-        let currentLine = currentLine + 1
-    endwhile
-    return 1
-endfunction
 " Function: s:CanToggleCommentLine(forceNested, line) {{{2
 "This function is used to determine whether the given line can be toggle commented.
 "It returns 1 if it can be and 0 otherwise
@@ -2329,7 +2136,7 @@ endfunction
 function s:Left(...)
     let params = a:0 ? a:1 : {}
 
-    let delim = has_key(params, 'alt') ? b:NERDCommenterDelims['leftAlt'] : b:NERDCommenterDelims['left'] 
+    let delim = has_key(params, 'alt') ? b:NERDCommenterDelims['leftAlt'] : b:NERDCommenterDelims['left']
 
     if delim == ''
         return ''
@@ -2508,7 +2315,7 @@ endfunction
 function s:Right(...)
     let params = a:0 ? a:1 : {}
 
-    let delim = has_key(params, 'alt') ? b:NERDCommenterDelims['rightAlt'] : b:NERDCommenterDelims['right'] 
+    let delim = has_key(params, 'alt') ? b:NERDCommenterDelims['rightAlt'] : b:NERDCommenterDelims['right']
 
     if delim == ''
         return ''
@@ -2666,58 +2473,9 @@ endfunction
 " Section: Comment mapping setup {{{1
 " ===========================================================================
 
-" switch to/from alternative delimiters
-nnoremap <plug>NERDCommenterAltDelims :call <SID>SwitchToAlternativeDelimiters(1)<cr>
-
-" comment out lines
-nnoremap <silent> <plug>NERDCommenterComment :call NERDComment(0, "norm")<cr>
-vnoremap <silent> <plug>NERDCommenterComment <ESC>:call NERDComment(1, "norm")<cr>
-
 " toggle comments
 nnoremap <silent> <plug>NERDCommenterToggle :call NERDComment(0, "toggle")<cr>
 vnoremap <silent> <plug>NERDCommenterToggle <ESC>:call NERDComment(1, "toggle")<cr>
-
-" minimal comments
-nnoremap <silent> <plug>NERDCommenterMinimal :call NERDComment(0, "minimal")<cr>
-vnoremap <silent> <plug>NERDCommenterMinimal <ESC>:call NERDComment(1, "minimal")<cr>
-
-" sexy comments
-nnoremap <silent> <plug>NERDCommenterSexy :call NERDComment(0, "sexy")<CR>
-vnoremap <silent> <plug>NERDCommenterSexy <ESC>:call NERDComment(1, "sexy")<CR>
-
-" invert comments
-nnoremap <silent> <plug>NERDCommenterInvert :call NERDComment(0, "invert")<CR>
-vnoremap <silent> <plug>NERDCommenterInvert <ESC>:call NERDComment(1, "invert")<CR>
-
-" yank then comment
-nmap <silent> <plug>NERDCommenterYank :call NERDComment(0, "yank")<CR>
-vmap <silent> <plug>NERDCommenterYank <ESC>:call NERDComment(1, "yank")<CR>
-
-" left aligned comments
-nnoremap <silent> <plug>NERDCommenterAlignLeft :call NERDComment(0, "alignLeft")<cr>
-vnoremap <silent> <plug>NERDCommenterAlignLeft <ESC>:call NERDComment(1, "alignLeft")<cr>
-
-" left and right aligned comments
-nnoremap <silent> <plug>NERDCommenterAlignBoth :call NERDComment(0, "alignBoth")<cr>
-vnoremap <silent> <plug>NERDCommenterAlignBoth <ESC>:call NERDComment(1, "alignBoth")<cr>
-
-" nested comments
-nnoremap <silent> <plug>NERDCommenterNest :call NERDComment(0, "nested")<cr>
-vnoremap <silent> <plug>NERDCommenterNest <ESC>:call NERDComment(1, "nested")<cr>
-
-" uncomment
-nnoremap <silent> <plug>NERDCommenterUncomment :call NERDComment(0, "uncomment")<cr>
-vnoremap <silent> <plug>NERDCommenterUncomment :call NERDComment(1, "uncomment")<cr>
-
-" comment till the end of the line
-nnoremap <silent> <plug>NERDCommenterToEOL :call NERDComment(0, "toEOL")<cr>
-
-" append comments
-nmap <silent> <plug>NERDCommenterAppend :call NERDComment(0, "append")<cr>
-
-" insert comments
-inoremap <silent> <plug>NERDCommenterInInsert <SPACE><BS><ESC>:call NERDComment(0, "insert")<CR>
-
 
 function! s:CreateMaps(target, combo)
     if !hasmapto(a:target, 'n')
@@ -2730,61 +2488,7 @@ function! s:CreateMaps(target, combo)
 endfunction
 
 if g:NERDCreateDefaultMappings
-    call s:CreateMaps('<plug>NERDCommenterComment',    '<leader>cc')
     call s:CreateMaps('<plug>NERDCommenterToggle',     '<leader>c<space>')
-    call s:CreateMaps('<plug>NERDCommenterMinimal',    '<leader>cm')
-    call s:CreateMaps('<plug>NERDCommenterSexy',       '<leader>cs')
-    call s:CreateMaps('<plug>NERDCommenterInvert',     '<leader>ci')
-    call s:CreateMaps('<plug>NERDCommenterYank',       '<leader>cy')
-    call s:CreateMaps('<plug>NERDCommenterAlignLeft',  '<leader>cl')
-    call s:CreateMaps('<plug>NERDCommenterAlignBoth',  '<leader>cb')
-    call s:CreateMaps('<plug>NERDCommenterNest',       '<leader>cn')
-    call s:CreateMaps('<plug>NERDCommenterUncomment',  '<leader>cu')
-    call s:CreateMaps('<plug>NERDCommenterToEOL',      '<leader>c$')
-    call s:CreateMaps('<plug>NERDCommenterAppend',     '<leader>cA')
-
-    if !hasmapto('<plug>NERDCommenterAltDelims', 'n')
-        nmap <leader>ca <plug>NERDCommenterAltDelims
-    endif
 endif
 
-
-
-" Section: Menu item setup {{{1
-" ===========================================================================
-"check if the user wants the menu to be displayed
-if g:NERDMenuMode != 0
-
-    let menuRoot = ""
-    if g:NERDMenuMode == 1
-        let menuRoot = 'comment'
-    elseif g:NERDMenuMode == 2
-        let menuRoot = '&comment'
-    elseif g:NERDMenuMode == 3
-        let menuRoot = '&Plugin.&comment'
-    endif
-
-    function! s:CreateMenuItems(target, desc, root)
-        exec 'nmenu <silent> ' . a:root . '.' . a:desc . ' ' . a:target
-        exec 'vmenu <silent> ' . a:root . '.' . a:desc . ' ' . a:target
-    endfunction
-    call s:CreateMenuItems("<plug>NERDCommenterComment",    'Comment', menuRoot)
-    call s:CreateMenuItems("<plug>NERDCommenterToggle",     'Toggle', menuRoot)
-    call s:CreateMenuItems('<plug>NERDCommenterMinimal',    'Minimal', menuRoot)
-    call s:CreateMenuItems('<plug>NERDCommenterNest',       'Nested', menuRoot)
-    exec 'nmenu <silent> '. menuRoot .'.To\ EOL <plug>NERDCommenterToEOL'
-    call s:CreateMenuItems('<plug>NERDCommenterInvert',     'Invert', menuRoot)
-    call s:CreateMenuItems('<plug>NERDCommenterSexy',       'Sexy', menuRoot)
-    call s:CreateMenuItems('<plug>NERDCommenterYank',       'Yank\ then\ comment', menuRoot)
-    exec 'nmenu <silent> '. menuRoot .'.Append <plug>NERDCommenterAppend'
-    exec 'menu <silent> '. menuRoot .'.-Sep-    :'
-    call s:CreateMenuItems('<plug>NERDCommenterAlignLeft',  'Left\ aligned', menuRoot)
-    call s:CreateMenuItems('<plug>NERDCommenterAlignBoth',  'Left\ and\ right\ aligned', menuRoot)
-    exec 'menu <silent> '. menuRoot .'.-Sep2-    :'
-    call s:CreateMenuItems('<plug>NERDCommenterUncomment',  'Uncomment', menuRoot)
-    exec 'nmenu <silent> '. menuRoot .'.Switch\ Delimiters <plug>NERDCommenterAltDelims'
-    exec 'imenu <silent> '. menuRoot .'.Insert\ Comment\ Here <plug>NERDCommenterInInsert'
-    exec 'menu <silent> '. menuRoot .'.-Sep3-    :'
-    exec 'menu <silent>'. menuRoot .'.Help :help NERDCommenterContents<CR>'
-endif
 " vim: set foldmethod=marker :
